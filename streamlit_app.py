@@ -115,24 +115,6 @@ current_page = st.session_state.page
 load_page(current_page)
 # Obtener el índice de la página actual
 current_index = pages_list.index(current_page)
-# === BOTÓN ===
-st.markdown("""
-    <style>
-    div[data-testid="stHorizontalBlock"] > div {
-        flex: 1 1 100% !important; /* el contenedor ocupa todo el ancho */
-    }
-    .stButton button {
-        width: 100% !important;
-        background-color: #0B0B19 !important;
-        color: white !important;
-        font-weight: 700 !important;
-        font-size: 18px !important;
-        padding: 1em !important;
-        border-radius: 10px !important;
-        margin-top: 40px !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
 
 if st.button("Continuar a Registro de Jugadores",key="button0"):
     st.session_state.page = pages_list[1]  # Avanzar a la siguiente página
