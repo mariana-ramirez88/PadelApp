@@ -1,6 +1,7 @@
 import streamlit as st
 import os,importlib
 from assets.sidebar import sidebar_style
+from assets.helper_funcs import initialize_vars
 st.set_page_config(page_title="PlayZone Padel App",page_icon=":tennis:", layout="wide")
 
 hide_streamlit_style = """
@@ -12,16 +13,14 @@ hide_streamlit_style = """
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
 
-if "page" not in st.session_state:
-    st.session_state.page = "home"
-
 # Cargar la lista de páginas desde la carpeta "pages"
 pages_list = ["home"] + [f.replace(".py", "") for f in os.listdir("pages") if f.endswith(".py")]
+if "page" not in st.session_state:
+    st.session_state.page = "home"  # Start with the homepage    
 
 def load_page(page_name):
     if page_name == "home":
 
-        #st.title("Configuración del Torneo")
         st.markdown("""
         <style>
         .main-title {
@@ -89,24 +88,31 @@ def load_page(page_name):
         </style>
         """, unsafe_allow_html=True)
 
-
-
         # Título centrado
         st.markdown('<div class="main-title">🏆 PlayZone Padel App</div>', unsafe_allow_html=True)
 
         c1,c2 = st.columns(2)
         with c1:
-            num_fields = st.number_input("Número de canchas", value=2)
-            mod = st.selectbox("Modalidad", ["Todos Contra Todos","Parejas Fijas"])
+            num_fields = st.number_input("Número de canchas",value = 2,key="fields_input",min_value=1)
+            st.session_state.num_fields = num_fields
+            mod = st.selectbox("Modalidad", ["Todos Contra Todos","Parejas Fijas"],key="modalidad_input",index=1)
+            st.session_state.mod = mod
             if mod == "Todos Contra Todos":
-                mixto = st.selectbox("Composición Parejas", ["Aleatorio","Siempre Mixto"])
+                mixto = st.selectbox("Composición Parejas", ["Aleatorio","Siempre Mixto"],key="mixto_input",index=0)
+                st.session_state.mixto_op = mixto
+                allow_step = 1
+            elif mod == "Parejas Fijas":
+                allow_step = 2
         with c2:
-            num_players = st.number_input("Número de jugadores",value=8)
-            pts = st.selectbox("Formato Puntaje", ["Sets","Puntos"])
+            num_players = st.number_input("Número de jugadores",value=8,key="select_players",step=allow_step)
+            st.session_state.num_players = num_players
+            pts = st.selectbox("Formato Puntaje", ["Sets","Puntos"],key="scoring",index=1)
             if pts == "Puntos":
-                num_pts = st.number_input("Número de puntos",value=16)
-                win = st.selectbox("Puntos Jugados", ["Suma","Fijo"])
-
+                num_pts = st.number_input("Número de puntos",value=16,key="num_point_input")
+                st.session_state.num_pts = num_pts
+                win = st.selectbox("Puntos Jugados", ["Suma","Fijo"],key="end_format_input",index=0)
+                st.session_state.win = win
+    
         
     else:
         module = importlib.import_module(f"pages.{page_name}")
@@ -116,8 +122,13 @@ load_page(current_page)
 # Obtener el índice de la página actual
 current_index = pages_list.index(current_page)
 
-if st.button("Continuar a Registro de Jugadores",key="button0"):
-    st.session_state.page = pages_list[1]  # Avanzar a la siguiente página
-    st.rerun()
+if current_page == "home":
+    if st.button("Continuar a Registro de Jugadores",key="button0",use_container_width=True):
+        st.session_state.page = pages_list[1]  # Avanzar a la siguiente página
+        st.rerun()
 
 sidebar_style()
+
+#TODO arreglar ancho de boton en version desplegada
+#TODO poner labels en negrilla 
+#incluir resumen de modalidad
