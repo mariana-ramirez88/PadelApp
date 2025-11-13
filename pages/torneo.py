@@ -76,6 +76,17 @@ def app():
             .stNumberInput button {
             color: white !important;           /* color de los signos + y - */
             }
+            /* === BOTÓN === */
+            .stButton button {
+                width: 100%;
+                background-color: #0B0B19;
+                color: white;
+                font-weight: 700;
+                font-size: 18px;
+                padding: 1em;
+                border-radius: 10px;
+                margin-top: 40px;
+            }
             </style>
         """, unsafe_allow_html=True)
 
@@ -214,10 +225,8 @@ def app():
                         score2 = st.number_input(f"Puntos {p2}", key=f"{p1}_{p2}_p2", min_value=0)
 
                     st.session_state.resultados[(p1, p2)] = (score1, score2)
-
-        # --- Ranking Final ---
-        if "ranking" not in st.session_state:
-            ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
+            
+        # --- Ranking Final ---            
         if st.button("¿Cómo va el ranking? 👀"):
             ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             st.session_state.ranking = ranking
@@ -231,6 +240,11 @@ def app():
             st.rerun()
     with col4:
         if st.button("Ver Resultados Finales"):
+            if mod_parejas == "Parejas Fijas":
+                ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
+            elif mod_parejas == "Todos Contra Todos":
+                ranking = calcular_ranking_individual(st.session_state.resultados)
+            st.session_state.ranking = ranking
             st.session_state.page = "ranking"
             st.rerun()
    
