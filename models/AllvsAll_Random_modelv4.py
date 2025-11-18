@@ -27,9 +27,15 @@ def generar_torneo_todos_contra_todos(
         raise ValueError("Se requieren al menos 4 jugadores para dobles 2vs2.")
 
     # metas de rondas
-    min_rounds = max(1, n - 2)
-    max_rounds = max(1, n - 1)  # según tu regla
-    target_rounds = min_rounds  # intentamos este
+    if n == 8 and num_canchas == 2:
+        # caso especial solicitado
+        min_rounds = 7
+        max_rounds = 7
+    else:
+        min_rounds = max(1, n - 2)
+        max_rounds = max(1, n - 1)
+
+    target_rounds = min_rounds
     max_total_rounds = max_rounds
 
     # pares que deben cubrirse (enfrentamientos "opuesto a pareja": cada jugador contra otro)
@@ -88,7 +94,7 @@ def generar_torneo_todos_contra_todos(
     # límite de iteraciones para evitar ciclo infinito
     max_round_iters = max_total_rounds
 
-    while (enfrentamientos_cubiertos != todos_pares) and (ronda_idx < max_round_iters):
+    while ronda_idx < max_round_iters:
         ronda_idx += 1
         disponibles = set(jugadores)
         # ordenar por menos partidos válidos y menos descansos
@@ -176,7 +182,8 @@ def generar_torneo_todos_contra_todos(
                 disponibles -= set([p for p in (p1 + p2) if p in disponibles])
 
         # asignar descansos para los que no se usaron en la ronda
-        no_usados = [j for j in jugadores if all(j not in (tuple(p['pareja1']) + tuple(p['pareja2']) + tuple(p['ayudantes'])) for p in partidos_ronda)]
+        # los que quedaron en 'disponibles' son exactamente quienes no jugaron (no incluyen los que ya seleccionamos como descansos)
+        no_usados = list(disponibles)
         for j in no_usados:
             descansos[j] += 1
             descansos_ult_ronda[j] = ronda_idx
@@ -214,7 +221,8 @@ def generar_torneo_todos_contra_todos(
         # condición para cortar anticipadamente si ya cubrimos pares y además tenemos igualdad razonable
         if enfrentamientos_cubiertos == todos_pares:
             # intentar balancear partidos válidos: si hay diferencias pequeñas, es tolerable
-            break
+            if not (n == 8 and num_canchas == 2):
+                break
 
     # si no se alcanzó en target rounds, permitir una ronda más hasta max_total_rounds
     # (el while ya limita con max_round_iters)

@@ -91,6 +91,12 @@ def app():
         """, unsafe_allow_html=True)
 
         for ronda_data in st.session_state.fixture:
+            with st.expander(f"DEBUG Ronda {ronda_data['ronda']}"):
+                st.write("Partidos:")
+                st.write(ronda_data["partidos"])
+                st.write("Descansan crudo:", ronda_data["descansan"])
+                st.write("Descansan únicos:", list(set(ronda_data["descansan"])))
+
             st.subheader(f"Ronda {ronda_data['ronda']}")
             cols = st.columns(len(ronda_data["partidos"]))
 
