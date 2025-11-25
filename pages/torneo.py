@@ -102,9 +102,9 @@ def app():
             cols = st.columns(len(ronda_data["partidos"]))
 
             for c_i, partido in enumerate(ronda_data["partidos"]):
-                with st.expander(f"Debug Partido"):
+                """ with st.expander(f"Debug Partido"):
                     st.write("Ayudantes declarados:", partido["ayudantes"])
-                    st.write("Valido_para:", partido["valido_para"])
+                    st.write("Valido_para:", partido["valido_para"])"""
 
                 ayudantes = partido.get("ayudantes", []) or []
                 # aplicar ícono a los nombres que son ayudantes
@@ -148,8 +148,12 @@ def app():
                     # *** AGREGAR AQUÍ: Guardar en resultados ***
                     pareja1_str = " & ".join(partido["pareja1"])
                     pareja2_str = " & ".join(partido["pareja2"])
-                    st.session_state.resultados[(pareja1_str, pareja2_str)] = (score1, score2)
+                    current_value = (score1, score2)
 
+                    # Solo actualizar si no existe o cambió
+                    if (pareja1_str, pareja2_str) not in st.session_state.resultados or \
+                    st.session_state.resultados[(pareja1_str, pareja2_str)] != current_value:
+                        st.session_state.resultados[(pareja1_str, pareja2_str)] = current_value
                 # mostrar ayudantes o descansos
                 if ayudantes:
                     lista_ayudantes = ", ".join([render_nombre(a, ayudantes) for a in ayudantes])
@@ -162,8 +166,8 @@ def app():
             st.markdown("### Resumen de participación")
             st.dataframe(st.session_state.out["resumen"])
         # --- Sección de análisis del algoritmo ---
-        st.markdown("## 🔍 Análisis de Resultados del Algoritmo")
-        analyze_algorithm_results(st.session_state.fixture)
+        """st.markdown("## 🔍 Análisis de Resultados del Algoritmo")
+        analyze_algorithm_results(st.session_state.fixture)"""
         
         # --- Ranking Final ---
         if "ranking" not in st.session_state:
