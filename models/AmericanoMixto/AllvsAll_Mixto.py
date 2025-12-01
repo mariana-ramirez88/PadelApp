@@ -1,266 +1,412 @@
-from collections import defaultdict
 import random
+from itertools import combinations, product
+from collections import defaultdict
+import pandas as pd
+from typing import List, Dict, Any, Tuple, Set
 
-class AmericanoPadelTournament:
-    def __init__(self, male_players, female_players, num_fields, points_per_match):
+class AmericanoMixtoTournament:
+    def __init__(self, male_players: List[str], female_players: List[str], num_fields: int):
         """
-        Initialize the Americano Padel Tournament
+        Initialize Americano Mixed Padel Tournament
         
         Args:
-            male_players (list): List of male player names
-            female_players (list): List of female player names
-            num_fields (int): Number of available courts/fields
-            points_per_match (int): Winning format (e.g., 24, 32 points)
+            male_players: List of male player names
+            female_players: List of female player names (must be equal to males)
+            num_fields: Number of available padel fields
         """
-        # Validate equal numbers
         if len(male_players) != len(female_players):
-            raise ValueError(f"Must have equal numbers of men and women. Got {len(male_players)} men and {len(female_players)} women.")
-        
-        if len(male_players) < 2:
-            raise ValueError("Need at least 2 players of each gender (4 total)")
+            raise ValueError("Debe haber el mismo número de hombres y mujeres")
         
         self.male_players = male_players
         self.female_players = female_players
-        self.num_players = len(male_players)  # Players per gender
-        self.total_players = len(male_players) + len(female_players)
+        self.num_males = len(male_players)
+        self.num_females = len(female_players)
         self.num_fields = num_fields
-        self.points_per_match = points_per_match
+        self.all_players = male_players + female_players
         
-        # Track statistics for each player
-        self.player_stats = defaultdict(lambda: {
-            'matches': 0,
-            'partners': defaultdict(int),  # How many times partnered with each player
-            'opponents': defaultdict(int),  # How many times opposed each player
-            'points_for': 0,
-            'points_against': 0
-        })
+        # Gender mapping
+        self.gender = {}
+        for m in male_players:
+            self.gender[m] = 'M'
+        for f in female_players:
+            self.gender[f] = 'F'
         
-        self.rounds = []
-        self.all_matches_played = set()  # Track unique matches
+        # Statistics tracking
+        self.mixed_partner_count = defaultdict(int)  # (male, female) pairs
+        self.opponent_count = defaultdict(lambda: defaultdict(int))
+        self.total_games_played = defaultdict(int)
+        self.consecutive_rests = defaultdict(int)
+        self.last_round_played = defaultdict(lambda: -1)
+        
+    def calculate_optimal_rounds(self) -> int:
+        """
+        Calculate optimal rounds for mixed tournament
+        
+        OBJETIVO: Cada mujer debe ser pareja de cada hombre al menos una vez
+        
+        Total de parejas mixtas únicas = num_males × num_females
+        Parejas formadas por ronda = num_fields × 2
+        Rondas mínimas = ceil(parejas_totales ÷ parejas_por_ronda)
+        
+        Ejemplos:
+        - 5H + 5M con 2 canchas: 25 parejas ÷ 4 = 6.25 → 7 rondas
+        - 4H + 4M con 2 canchas: 16 parejas ÷ 4 = 4 rondas
+        """
+        total_mixed_pairs = self.num_males * self.num_females
+        pairs_per_round = self.num_fields * 2
+        
+        # Redondear hacia arriba para cubrir todas las parejas
+        optimal_rounds = (total_mixed_pairs + pairs_per_round - 1) // pairs_per_round
+        
+        return optimal_rounds
     
-    def get_match_signature(self, team1, team2):
-        """Create unique signature for a match (independent of team/player order)"""
-        all_players = sorted([team1[0], team1[1], team2[0], team2[1]])
-        return tuple(all_players)
+    def get_uncovered_mixed_pairs(self) -> Set[Tuple[str, str]]:
+        """Get list of (male, female) pairs that haven't partnered yet"""
+        all_pairs = set(product(self.male_players, self.female_players))
+        covered = set(self.mixed_partner_count.keys())
+        return all_pairs - covered
     
-    def calculate_match_score(self, team1, team2):
-        """
-        Calculate desirability score for a match (LOWER is better)
-        Prioritizes:
-        1. Players with fewer matches
-        2. New partnerships
-        3. New opponents
-        """
-        players = [team1[0], team1[1], team2[0], team2[1]]
-        
-        # Base score: sum of all players' match counts (prefer players with fewer matches)
-        match_count_score = sum(self.player_stats[p]['matches'] for p in players)
-        
-        # Partnership penalty (heavily penalize repeated partnerships)
-        partnership_penalty = 0
-        partnership_penalty += self.player_stats[team1[0]]['partners'][team1[1]] * 1000
-        partnership_penalty += self.player_stats[team2[0]]['partners'][team2[1]] * 1000
-        
-        # Opponent penalty (moderately penalize repeated opponents)
-        opponent_penalty = 0
-        for p1 in [team1[0], team1[1]]:
-            for p2 in [team2[0], team2[1]]:
-                opponent_penalty += self.player_stats[p1]['opponents'][p2] * 100
-        
-        total_score = match_count_score + partnership_penalty + opponent_penalty
-        
-        # Add small random factor to break ties
-        total_score += random.random() * 0.01
-        
-        return total_score
+    def count_uncovered_partners(self, player: str) -> int:
+        """Count how many potential partners this player hasn't played with"""
+        if self.gender[player] == 'M':
+            potential = self.female_players
+            return sum(1 for f in potential if self.mixed_partner_count[(player, f)] == 0)
+        else:
+            potential = self.male_players
+            return sum(1 for m in potential if self.mixed_partner_count[(m, player)] == 0)
     
-    def find_best_matches_for_round(self, num_matches_needed):
+    def get_match_score(self, match: Tuple[str, str, str, str], round_num: int) -> float:
         """
-        Find the best set of matches for a round
-        Uses greedy algorithm to select matches that maximize balance
-        """
-        selected_matches = []
-        used_players = set()
+        Score a potential match for mixed tournament
+        Lower score is better
         
-        # Generate all possible matches from unused players
-        while len(selected_matches) < num_matches_needed:
-            available_males = [m for m in self.male_players if m not in used_players]
-            available_females = [f for f in self.female_players if f not in used_players]
-            
-            # Need at least 2 of each gender
-            if len(available_males) < 2 or len(available_females) < 2:
+        Match format: (male1, female1, male2, female2)
+        Teams: (male1 & female1) vs (male2 & female2)
+        """
+        m1, f1, m2, f2 = match
+        score = 0.0
+        
+        # PRIORIDAD 1: Maximizar parejas mixtas NUEVAS (CRÍTICO)
+        pair1 = (m1, f1)
+        pair2 = (m2, f2)
+        
+        # Recompensa masiva por parejas no usadas
+        if self.mixed_partner_count[pair1] == 0:
+            score -= 10000
+        else:
+            score += self.mixed_partner_count[pair1] * 8000
+        
+        if self.mixed_partner_count[pair2] == 0:
+            score -= 10000
+        else:
+            score += self.mixed_partner_count[pair2] * 8000
+        
+        # PRIORIDAD 2: Balance de partidos jugados
+        games_sum = sum(self.total_games_played[p] for p in match)
+        score += games_sum * 500
+        
+        # Penalizar diferencias grandes
+        games_list = [self.total_games_played[p] for p in match]
+        variance = max(games_list) - min(games_list)
+        score += variance * 300
+        
+        # PRIORIDAD 3: Nuevos enfrentamientos
+        opponents = [(m1, m2), (m1, f2), (f1, m2), (f1, f2)]
+        for opp1, opp2 in opponents:
+            opp_count = self.opponent_count[opp1][opp2]
+            if opp_count == 0:
+                score -= 800
+            else:
+                score += opp_count * 400
+        
+        # PRIORIDAD 4: Evitar descansos consecutivos
+        for p in match:
+            if self.last_round_played[p] == round_num - 1:
+                score -= 200
+            elif self.last_round_played[p] < round_num - 1:
+                score += 150
+        
+        return score
+    
+    def generate_all_possible_matches(self, available_males: List[str], 
+                                     available_females: List[str]) -> List[Tuple]:
+        """Generate all possible match configurations"""
+        if len(available_males) < 2 or len(available_females) < 2:
+            return []
+        
+        possible_matches = []
+        
+        # Try all combinations of 2 males and 2 females
+        for m1, m2 in combinations(available_males, 2):
+            for f1, f2 in combinations(available_females, 2):
+                # Two possible configurations
+                possible_matches.append((m1, f1, m2, f2))
+                possible_matches.append((m1, f2, m2, f1))
+        
+        return possible_matches
+    
+    def generate_round_matches(self, round_num: int) -> Tuple[List[Dict], List[str]]:
+        """Generate matches for a round prioritizing uncovered pairs"""
+        matches = []
+        
+        # Get uncovered pairs
+        uncovered = self.get_uncovered_mixed_pairs()
+        
+        # If all pairs are covered, we're done
+        if not uncovered:
+            return [], self.all_players
+        
+        # Find players that need more coverage
+        males_priority = sorted(self.male_players, 
+                               key=lambda m: (self.total_games_played[m], 
+                                            -self.count_uncovered_partners(m)))
+        females_priority = sorted(self.female_players,
+                                 key=lambda f: (self.total_games_played[f],
+                                              -self.count_uncovered_partners(f)))
+        
+        remaining_males = set(males_priority)
+        remaining_females = set(females_priority)
+        
+        for field_idx in range(self.num_fields):
+            if len(remaining_males) < 2 or len(remaining_females) < 2:
                 break
             
+            # Generate all possible matches with remaining players
+            possible_matches = self.generate_all_possible_matches(
+                list(remaining_males), 
+                list(remaining_females)
+            )
+            
+            if not possible_matches:
+                break
+            
+            # Score and select best match
             best_match = None
             best_score = float('inf')
             
-            # Try all possible match combinations with available players
-            for i in range(len(available_males)):
-                for j in range(i + 1, len(available_males)):
-                    m1, m2 = available_males[i], available_males[j]
-                    
-                    for k in range(len(available_females)):
-                        for l in range(k + 1, len(available_females)):
-                            f1, f2 = available_females[k], available_females[l]
-                            
-                            # Try both team configurations
-                            configs = [
-                                ((m1, f1), (m2, f2)),
-                                ((m1, f2), (m2, f1))
-                            ]
-                            
-                            for team1, team2 in configs:
-                                signature = self.get_match_signature(team1, team2)
-                                
-                                # Skip if already played
-                                if signature in self.all_matches_played:
-                                    continue
-                                
-                                score = self.calculate_match_score(team1, team2)
-                                
-                                if score < best_score:
-                                    best_score = score
-                                    best_match = (team1, team2)
+            for match_config in possible_matches:
+                score = self.get_match_score(match_config, round_num)
+                if score < best_score:
+                    best_score = score
+                    best_match = match_config
             
-            if best_match is None:
-                break
-            
-            selected_matches.append(best_match)
-            team1, team2 = best_match
-            used_players.update([team1[0], team1[1], team2[0], team2[1]])
-            
-            # Mark as played
-            signature = self.get_match_signature(team1, team2)
-            self.all_matches_played.add(signature)
+            if best_match:
+                m1, f1, m2, f2 = best_match
+                matches.append({
+                    "players": (m1, f1, m2, f2),
+                    "field": field_idx
+                })
+                
+                # Remove used players
+                remaining_males.discard(m1)
+                remaining_males.discard(m2)
+                remaining_females.discard(f1)
+                remaining_females.discard(f2)
         
-        return selected_matches
+        # Resting players
+        resting = list(remaining_males | remaining_females)
+        return matches, resting
     
-    def update_player_stats(self, match):
-        """Update statistics after a match is scheduled"""
-        team1, team2 = match
+    def update_statistics(self, match: Dict, round_num: int):
+        """Update tracking statistics after a match"""
+        m1, f1, m2, f2 = match["players"]
         
-        # Update match counts
-        for player in [team1[0], team1[1], team2[0], team2[1]]:
-            self.player_stats[player]['matches'] += 1
-        
-        # Update partnerships
-        self.player_stats[team1[0]]['partners'][team1[1]] += 1
-        self.player_stats[team1[1]]['partners'][team1[0]] += 1
-        self.player_stats[team2[0]]['partners'][team2[1]] += 1
-        self.player_stats[team2[1]]['partners'][team2[0]] += 1
+        # Update mixed partnerships
+        pair1 = (m1, f1)
+        pair2 = (m2, f2)
+        self.mixed_partner_count[pair1] += 1
+        self.mixed_partner_count[pair2] += 1
         
         # Update opponents
-        for p1 in [team1[0], team1[1]]:
-            for p2 in [team2[0], team2[1]]:
-                self.player_stats[p1]['opponents'][p2] += 1
-                self.player_stats[p2]['opponents'][p1] += 1
+        team1 = [m1, f1]
+        team2 = [m2, f2]
+        
+        for t1_player in team1:
+            for t2_player in team2:
+                self.opponent_count[t1_player][t2_player] += 1
+                self.opponent_count[t2_player][t1_player] += 1
+        
+        # Update total games played
+        for p in [m1, f1, m2, f2]:
+            self.total_games_played[p] += 1
+            self.last_round_played[p] = round_num
     
-    def generate_schedule(self, target_matches_per_player=None):
+    def identify_helpers(self, tournament_schedule: List[List[Dict]]) -> Dict[str, List[Tuple[int, int]]]:
         """
-        Generate the complete tournament schedule
+        Identify helpers AFTER tournament generation
         
-        Args:
-            target_matches_per_player (int): Target number of matches per player
-                                            None = auto-calculate (total_players - 1)
-        
-        Example:
-            tournament.generate_schedule()  # Auto-calculate target
-            tournament.generate_schedule(target_matches_per_player=10)  # Specific target
+        RULE: Valid games = MINIMUM games played by any player
+        Players who played MORE than minimum → extra games are as helper
         """
-        # Calculate target matches
-        if target_matches_per_player is None:
-            # In a perfect Americano with equal genders:
-            # Each player partners with n opposite-gender players
-            # Against (n-1) other opposite-gender players each time
-            # This gives approximately n*(n-1) total combinations to explore
-            # But practical target is closer to (total_players - 1) for balance
-            target_matches_per_player = self.total_players - 1
+        if not self.total_games_played:
+            return {}
         
-        print(f"{'='*70}")
-        print(f"AMERICANO PADEL TOURNAMENT".center(70))
-        print(f"{'='*70}")
-        print(f"Players: {self.num_players} men + {self.num_players} women = {self.total_players} total")
-        print(f"Available courts: {self.num_fields}")
-        print(f"Points per match: {self.points_per_match}")
-        print(f"Target matches per player: {target_matches_per_player}")
-        print()
+        min_games = min(self.total_games_played.values())
+        helpers = defaultdict(list)
         
-        round_num = 0
-        consecutive_empty_rounds = 0
+        # For each player who played MORE than minimum
+        for player in self.all_players:
+            if self.total_games_played[player] > min_games:
+                extra_games = self.total_games_played[player] - min_games
+                
+                # Mark their LAST N games as helper games
+                games_found = 0
+                for round_num in range(len(tournament_schedule) - 1, -1, -1):
+                    for field_idx, match in enumerate(tournament_schedule[round_num]):
+                        if player in match["players"]:
+                            games_found += 1
+                            if games_found <= extra_games:
+                                helpers[player].append((round_num, field_idx))
+                            if games_found >= extra_games:
+                                break
+                    if games_found >= extra_games:
+                        break
         
-        while consecutive_empty_rounds < 3:  # Stop if can't generate matches for 3 rounds
-            round_num += 1
-            
-            # Check if all players have reached target
-            match_counts = [self.player_stats[p]['matches'] for p in 
-                          self.male_players + self.female_players]
-            min_matches = min(match_counts) if match_counts else 0
-            max_matches = max(match_counts) if match_counts else 0
-            
-            # Stop if minimum target reached and balanced within 1 match
-            if min_matches >= target_matches_per_player and (max_matches - min_matches) <= 1:
-                print(f"Target reached! All players have {min_matches}-{max_matches} matches.")
-                break
-            
-            # Generate matches for this round
-            round_matches = self.find_best_matches_for_round(self.num_fields)
-            
-            if not round_matches:
-                consecutive_empty_rounds += 1
-                continue
-            
-            consecutive_empty_rounds = 0
-            self.rounds.append(round_matches)
-            
-            # Update stats
-            for match in round_matches:
-                self.update_player_stats(match)
-        
-        return self.rounds
+        return helpers
     
-    def print_schedule(self):
-        """Print the complete tournament schedule"""
-        print(f"\n{'='*70}")
-        print(f"TOURNAMENT SCHEDULE".center(70))
-        print(f"{'='*70}\n")
+    def generate_tournament(self) -> Tuple[List[List[Dict]], Dict, Dict]:
+        """Generate complete mixed tournament schedule"""
+        optimal_rounds = self.calculate_optimal_rounds()
+        tournament_schedule = []
         
-        for round_num, round_matches in enumerate(self.rounds, 1):
-            print(f"{'ROUND ' + str(round_num):^70}")
-            print(f"{'-'*70}")
+        for round_num in range(optimal_rounds):
+            matches, resting = self.generate_round_matches(round_num)
             
-            for court_num, match in enumerate(round_matches, 1):
-                team1, team2 = match
-                print(f"  Court {court_num}: {team1[0]:12} & {team1[1]:12} vs "
-                      f"{team2[0]:12} & {team2[1]:12}")
+            # If no matches possible, stop
+            if not matches:
+                # Check if we've covered all pairs
+                uncovered = self.get_uncovered_mixed_pairs()
+                if uncovered:
+                    # Still have uncovered pairs - continue
+                    continue
+                else:
+                    break
             
-            print()
+            tournament_schedule.append(matches)
+            
+            for match in matches:
+                self.update_statistics(match, round_num)
+            
+            # Update consecutive rests
+            for p in resting:
+                self.consecutive_rests[p] += 1
+            for match in matches:
+                for p in match["players"]:
+                    self.consecutive_rests[p] = 0
+        
+        # Identify helpers AFTER tournament generation
+        helpers = self.identify_helpers(tournament_schedule)
+        
+        # Calculate statistics
+        min_games = min(self.total_games_played.values()) if self.total_games_played else 0
+        
+        stats = {
+            "total_games_played": dict(self.total_games_played),
+            "helpers": {p: len(games) for p, games in helpers.items()},
+            "valid_games_target": min_games,
+            "mixed_pairs_covered": len(self.mixed_partner_count),
+            "total_mixed_pairs": self.num_males * self.num_females,
+            "coverage_percentage": (len(self.mixed_partner_count) / (self.num_males * self.num_females)) * 100,
+            "total_rounds_played": len(tournament_schedule),
+            "uncovered_pairs": list(self.get_uncovered_mixed_pairs())
+        }
+        
+        return tournament_schedule, helpers, stats
     
-    def print_statistics(self):
-        """Print detailed player statistics"""
-        print(f"{'='*70}")
-        print(f"PLAYER STATISTICS".center(70))
-        print(f"{'='*70}\n")
+    def format_for_streamlit(self, tournament_schedule: List[List[Dict]], 
+                            helpers: Dict, stats: Dict) -> Dict[str, Any]:
+        """Format tournament output for Streamlit visualization"""
+        rondas = []
         
-        all_players = self.male_players + self.female_players
-        
-        # Sort by match count, then alphabetically
-        sorted_players = sorted(all_players, 
-                               key=lambda p: (-self.player_stats[p]['matches'], p))
-        
-        print(f"{'Player':<15} {'Matches':<10} {'Partners':<12} {'Opponents':<12}")
-        print(f"{'-'*70}")
-        
-        for player in sorted_players:
-            stats = self.player_stats[player]
-            num_partners = len([p for p in stats['partners'] if stats['partners'][p] > 0])
-            num_opponents = len([p for p in stats['opponents'] if stats['opponents'][p] > 0])
+        for round_num, matches in enumerate(tournament_schedule, 1):
+            playing = set()
+            for match in matches:
+                playing.update(match["players"])
+            descansan = [p for p in self.all_players if p not in playing]
             
-            print(f"{player:<15} {stats['matches']:<10} {num_partners:<12} {num_opponents:<12}")
+            partidos = []
+            for field_idx, match in enumerate(matches):
+                m1, f1, m2, f2 = match["players"]
+                
+                # Determine helpers for this specific match
+                match_helpers = []
+                valido_para = [m1, f1, m2, f2]
+                
+                for player in [m1, f1, m2, f2]:
+                    if player in helpers:
+                        for helper_round, helper_field in helpers[player]:
+                            if helper_round == round_num - 1 and helper_field == field_idx:
+                                match_helpers.append(player)
+                                valido_para.remove(player)
+                                break
+                
+                partido = {
+                    "cancha": field_idx + 1,
+                    "pareja1": [m1, f1],
+                    "pareja2": [m2, f2],
+                    "ayudantes": match_helpers,
+                    "valido_para": valido_para
+                }
+                partidos.append(partido)
+            
+            ronda_data = {
+                "ronda": round_num,
+                "partidos": partidos,
+                "descansan": descansan
+            }
+            rondas.append(ronda_data)
         
-        # Show balance metrics
-        match_counts = [self.player_stats[p]['matches'] for p in all_players]
-        print(f"\n{'Balance Metrics:':<20}")
-        print(f"{'  Min matches:':<20} {min(match_counts)}")
-        print(f"{'  Max matches:':<20} {max(match_counts)}")
-        print(f"{'  Difference:':<20} {max(match_counts) - min(match_counts)}")
-        print(f"{'  Total rounds:':<20} {len(self.rounds)}")
+        # Create summary DataFrame
+        resumen_data = []
+        min_games = stats["valid_games_target"]
+        
+        for player in self.all_players:
+            total_games = self.total_games_played[player]
+            helper_games_count = len(helpers.get(player, []))
+            valid_games = total_games - helper_games_count
+            genero = "Hombre" if self.gender[player] == 'M' else "Mujer"
+            
+            resumen_data.append({
+                "Jugador": player,
+                "Género": genero,
+                "Partidos Totales": total_games,
+                "Partidos Válidos": valid_games,
+                "Partidos Ayudante": helper_games_count
+            })
+        
+        output = {
+            "rondas": rondas,
+            "resumen": resumen_data,
+            "stats": stats
+        }
+        
+        return output
+
+
+def generar_torneo_mixto(male_players: List[str], female_players: List[str], 
+                         num_canchas: int, puntos_partido: int = 32, 
+                         seed: int = None) -> Dict[str, Any]:
+    """
+    Main function to generate mixed tournament
+    
+    OBJETIVO: Cada mujer juega con cada hombre al menos una vez
+    
+    Args:
+        male_players: List of male player names
+        female_players: List of female player names (equal length)
+        num_canchas: Number of fields/courts available
+        puntos_partido: Points per match (not used in algorithm, for reference)
+        seed: Random seed for reproducibility
+    
+    Returns:
+        Dictionary with:
+        - 'rondas': List of rounds with matches
+        - 'resumen': Summary statistics per player
+        - 'stats': Tournament statistics including coverage
+    """
+    if seed:
+        random.seed(seed)
+    
+    tournament = AmericanoMixtoTournament(male_players, female_players, num_canchas)
+    schedule, helpers, stats = tournament.generate_tournament()
+    return tournament.format_for_streamlit(schedule, helpers, stats)

@@ -83,7 +83,10 @@ def app():
     col2, col1, col3, col4 = st.columns([1, 1, 1, 1])
     with col1:
         if st.button("Volver"):
-            st.session_state.page = "torneo"
+            if ("mixto_op" in st.session_state) and (st.session_state.mixto_op == "Siempre Mixto"):
+                st.session_state.page = "torneo_mixto"
+            else:
+                st.session_state.page = "torneo"
             st.rerun()
     with col4:
         if st.button("Empezar Nuevo Torneo"):

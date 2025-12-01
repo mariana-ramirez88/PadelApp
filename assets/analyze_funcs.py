@@ -84,3 +84,84 @@ def analyze_algorithm_results(fixture):
 
     st.markdown("#### 💤 Análisis de descansos consecutivos")
     analyze_descansos(fixture, players)
+
+
+def heatmap_parejas_mixtas(fixture, male_players, female_players):
+    # Crear matriz mujer vs hombre
+    matrix = pd.DataFrame(0, index=female_players, columns=male_players)
+
+    for ronda in fixture:
+        for partido in ronda["partidos"]:
+            p1a, p1b = partido["pareja1"]
+            p2a, p2b = partido["pareja2"]
+
+            # --- Pareja 1 ---
+            # Detectar quién es mujer y quién es hombre
+            for f, m in [(p1a, p1b), (p1b, p1a)]:
+                if f in female_players and m in male_players:
+                    matrix.loc[f, m] += 1
+
+            # --- Pareja 2 ---
+            for f, m in [(p2a, p2b), (p2b, p2a)]:
+                if f in female_players and m in male_players:
+                    matrix.loc[f, m] += 1
+
+    # === Heatmap ===
+    fig, ax = plt.subplots(figsize=(6, 4))
+    sns.heatmap(matrix, annot=True, cmap="Purples", linewidths=.5, ax=ax)
+    ax.set_title("Combinaciones de Parejas Mixtas (Mujer con Hombre)")
+
+    return matrix, fig
+
+
+def heatmap_descansos_por_ronda(fixture, all_players):
+    # Matriz jugadores x rondas
+    matrix = pd.DataFrame(
+        0,
+        index=all_players,
+        columns=[f"Ronda {r['ronda']}" for r in fixture]
+    )
+
+    # Rellenar descansos
+    for ronda in fixture:
+        col = f"Ronda {ronda['ronda']}"
+        for p in ronda["descansan"]:
+            if p in matrix.index:
+                matrix.loc[p, col] = 1
+
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.heatmap(matrix, cmap="Reds", linewidths=.5, ax=ax)
+    ax.set_title("Descansos por Ronda (1 = descansó)")
+    ax.set_xlabel("Ronda")
+    ax.set_ylabel("Jugador")
+
+    return matrix, fig
+
+import itertools
+
+def heatmap_enfrentamientos(fixture, all_players):
+    # Matriz base
+    matrix = pd.DataFrame(0, index=all_players, columns=all_players)
+
+    # Contabilizar enfrentamientos
+    for ronda in fixture:
+        for partido in ronda["partidos"]:
+            p1 = partido["pareja1"]
+            p2 = partido["pareja2"]
+
+            for a in p1:
+                for b in p2:
+                    matrix.loc[a, b] += 1
+                    matrix.loc[b, a] += 1
+
+    # Mostrar solo parte superior para evitar duplicados
+    mask = np.tril(np.ones_like(matrix, dtype=bool))
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    sns.heatmap(matrix, mask=mask, annot=True, cmap="Blues",
+                linewidths=.5, ax=ax, square=True)
+    ax.set_title("Enfrentamientos entre Jugadores")
+    ax.set_xlabel("Jugador")
+    ax.set_ylabel("Jugador")
+
+    return matrix, fig
