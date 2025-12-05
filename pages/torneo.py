@@ -313,7 +313,7 @@ def app():
 
             
         # --- Ranking Final ---            
-        if st.button("¿Cómo va el ranking? 👀", key="ranking_parejas"):
+        if st.button("¿Cómo va el ranking? 👀", key="ranking_parejas",use_container_width=True):
             ranking = calcular_ranking_parejas(st.session_state.parejas, st.session_state.resultados)
             st.session_state.ranking = ranking
             st.dataframe(ranking)

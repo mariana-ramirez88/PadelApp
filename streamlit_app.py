@@ -63,7 +63,7 @@ def load_page(page_name):
             height: 52px !important;
             min-height: 52px !important;
             max-height: 52px !important;
-            color: #6C13BF !important;
+            color: #white !important;
             display: flex !important;
             align-items: center !important;
             justify-content: center !important;
