@@ -1,4 +1,5 @@
 import streamlit as st
+from assets.auth import check_login
 import os,importlib
 from assets.sidebar import sidebar_style
 from assets.helper_funcs import initialize_vars
@@ -12,6 +13,8 @@ hide_streamlit_style = """
     </style>
 """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+if not check_login():
+    st.stop()
 
 # Cargar la lista de páginas desde la carpeta "pages"
 pages_list = ["home"] + [f.replace(".py", "") for f in os.listdir("pages") if f.endswith(".py")]

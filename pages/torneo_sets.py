@@ -117,6 +117,15 @@ def app():
             text-align: center;
             font-weight: 700;
         }
+        .stNumberInput input {
+            background-color: #5E3187 !important;
+            color: white !important;                 /* makes the number white */
+            font-weight: 700 !important;             /* makes it bold */
+        }
+                        
+        .stNumberInput button {
+        color: white !important;           /* color de los signos + y - */
+        }
         /* === BOTÓN === */
         .stButton button {
             width: 100%;
